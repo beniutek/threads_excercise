@@ -1,25 +1,43 @@
-require 'securerandom'
-require 'drb/drb'
+class Producer
+  attr_reader :id, :own_buffer, :resources_size
 
-DURI = 'druby://localhost:9999'
-
-name = ARGV.first || SecureRandom.uuid
-
-puts "got producer name: #{name}"
-puts "starting thread ..."
-
-
-loop do
-  obj = DRbObject.new_with_uri(DURI)
-  puts "obj: #{obj}"
-
-
-  obj.synchronize do
-    puts "generating random"
-    random = SecureRandom.hex
-    puts "random"
-    puts "#{name} INSERTING: #{random}"
-    obj << random
+  def initialize(id: nil, resources_size: nil)
+    @id = id || SecureRandom.uuid
+    @resources_size = resources_size
+    @own_buffer = []
+    generate_resources(resources_size) if resources_size
   end
-  sleep(0.5)
+
+  def produce(queue, &block)
+    loop do
+      if empty?
+        puts "Producer #{id} is empty!"
+        Thread.exit
+      else
+        queue.synchronize do
+          log_id
+          yield(produce_val)
+        end
+      end
+    end
+  end
+
+  def generate_resources(size)
+    size.times do
+      val = SecureRandom.hex
+      @own_buffer << val
+    end
+  end
+
+  def produce_val
+    @resources_size ? @own_buffer.pop : SecureRandom.hex
+  end
+
+  def log_id
+    puts "Producer #{id}"
+  end
+
+  def empty?
+    @resources_size ? (@own_buffer.empty?) : false
+  end
 end

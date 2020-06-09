@@ -12,21 +12,22 @@ class Consumer
   end
 
   def consume(queue, &block)
-    # return self if full?
-
     loop do
-      # return self if full?
-
-      queue.synchronize do
-        log_id
-        val = yield(self)
-        own_buffer << val
+      if full?
+        puts "consumer #{id} is full #{own_buffer.size}"
+        Thread.exit
+      else
+        queue.synchronize do
+          log_id
+          val = yield(self)
+          own_buffer << val
+        end
       end
     end
   end
 
   def full?
-    own_buffer.size == max_size
+    own_buffer.size >= max_size
   end
 
   def log_id
@@ -35,20 +36,25 @@ class Consumer
 end
 
 class Producer
-  attr_reader :id, :own_buffer, :resouces_size
+  attr_reader :id, :own_buffer, :resources_size
 
-  def initialize(id = nil, resouces_size = nil)
+  def initialize(id: nil, resources_size: nil)
     @id = id || SecureRandom.uuid
-    @resouces_size = resouces_size
+    @resources_size = resources_size
     @own_buffer = []
-    generate_resources(resouces_size) if resouces_size
+    generate_resources(resources_size) if resources_size
   end
 
   def produce(queue, &block)
     loop do
-      log_id
-      queue.synchronize do
-        yield(produce_val)
+      if empty?
+        puts "Producer #{id} is empty!"
+        Thread.exit
+      else
+        queue.synchronize do
+          log_id
+          yield(produce_val)
+        end
       end
     end
   end
@@ -67,6 +73,10 @@ class Producer
   def log_id
     puts "Producer #{id}"
   end
+
+  def empty?
+    @resources_size ? (@own_buffer.empty?) : false
+  end
 end
 
 class ProducerConsumer
@@ -76,6 +86,8 @@ class ProducerConsumer
     @queue.extend(MonitorMixin)
     @empty_cond = @queue.new_cond
     @full_cond = @queue.new_cond
+    @all_consumers_full = @queue.new_cond
+    @all_producers_empty = @queue.new_cond
     @threads = []
   end
 
@@ -90,7 +102,7 @@ class ProducerConsumer
   def producers
     @pthreads.times do
       t = Thread.new do
-        producer = Producer.new
+        producer = Producer.new(resources_size: 10)
         producer.produce(@queue) do |val|
           @full_cond.wait_while { @queue.max == @queue.length }
           @queue.push(val)
@@ -108,6 +120,7 @@ class ProducerConsumer
         consumer = Consumer.new
         consumer.consume(@queue) do |i|
           @empty_cond.wait_while { @queue.empty? }
+          @all
           val = @queue.pop
           @full_cond.signal
           val

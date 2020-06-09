@@ -38,7 +38,7 @@ class Producer
   attr_reader :id, :own_buffer, :resouces_size
 
   def initialize(id = nil, resouces_size = nil)
-    @id = id
+    @id = id || SecureRandom.uuid
     @resouces_size = resouces_size
     @own_buffer = []
     generate_resources(resouces_size) if resouces_size
@@ -61,11 +61,11 @@ class Producer
   end
 
   def produce_val
-    resources_size ? @own_buffer.pop : SecureRandom.hex
+    @resources_size ? @own_buffer.pop : SecureRandom.hex
   end
 
   def log_id
-    puts "Consumer #{id}"
+    puts "Producer #{id}"
   end
 end
 
@@ -90,16 +90,11 @@ class ProducerConsumer
   def producers
     @pthreads.times do
       t = Thread.new do
-        val = SecureRandom.uuid
-        Thread.current.thread_variable_set(:id, val)
-        loop do
-          @queue.synchronize do
-            @full_cond.wait_while { @queue.max == @queue.length }
-            val = SecureRandom.hex
-            @queue.push(val)
-            # puts "#{id} producing #{val}, queue length: #{@queue.length}"
-            @empty_cond.signal
-          end
+        producer = Producer.new
+        producer.produce(@queue) do |val|
+          @full_cond.wait_while { @queue.max == @queue.length }
+          @queue.push(val)
+          @empty_cond.signal
         end
         true
       end

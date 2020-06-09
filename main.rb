@@ -3,6 +3,24 @@ require 'monitor'
 require 'securerandom'
 require 'thwait'
 
+class Consumer
+  attr_reader :id, :condition
+  def initialize(id = nil)
+    @id = id || SecureRandom.uuid
+  end
+
+  def consume(queue, &block)
+    queue.synchronize do
+      log_id
+      yield(self, queue)
+    end
+  end
+
+  def log_id
+    puts "Consumer #{id}"
+  end
+end
+
 class ProducerConsumer
   def initialize(pthreads = 3, cthreads = 3, queue_size = 5)
     @pthreads, @cthreads = pthreads, cthreads
@@ -44,9 +62,10 @@ class ProducerConsumer
   def consumers
     @cthreads.times do
       puts "setting consumer"
+      consumer = Consumer.new
       t = Thread.new do
         loop do
-          @queue.synchronize do
+          consumer.consume(@queue) do |i|
             @empty_cond.wait_while { @queue.empty? }
             val = @queue.pop
             puts "Consumed #{val}, queue length #{@queue.length}"

@@ -4,16 +4,64 @@ require 'securerandom'
 require 'thwait'
 
 class Consumer
-  attr_reader :id, :condition
-  def initialize(id = nil)
+  attr_reader :id, :condition, :own_buffer, :max_size
+  def initialize(id = nil, max_size = 10)
     @id = id || SecureRandom.uuid
+    @max_size = max_size
+    @own_buffer = []
   end
 
   def consume(queue, &block)
-    queue.synchronize do
-      log_id
-      yield(self, queue)
+    # return self if full?
+
+    loop do
+      # return self if full?
+
+      queue.synchronize do
+        log_id
+        val = yield(self)
+        own_buffer << val
+      end
     end
+  end
+
+  def full?
+    own_buffer.size == max_size
+  end
+
+  def log_id
+    puts "Consumer #{id}"
+  end
+end
+
+class Producer
+  attr_reader :id, :own_buffer, :resouces_size
+
+  def initialize(id = nil, resouces_size = nil)
+    @id = id
+    @resouces_size = resouces_size
+    @own_buffer = []
+    generate_resources(resouces_size) if resouces_size
+  end
+
+  def produce(queue, &block)
+    loop do
+      log_id
+      queue.synchronize do
+        yield(produce_val)
+      end
+    end
+  end
+
+  def generate_resources(size)
+    size.times do
+      val = SecureRandom.hex
+      @own_buffer << val
+    end
+  end
+
+  def produce_val
+    resources_size ? @own_buffer.pop : SecureRandom.hex
   end
 
   def log_id
@@ -31,57 +79,55 @@ class ProducerConsumer
     @threads = []
   end
 
-  def run
+  def run(time = nil)
     producers
     consumers
-    ThreadsWait.all_waits(@threads)
+    ThreadsWait.all_waits(@threads) do |thread|
+      puts "GOT RESULT: #{thread}"
+    end
   end
 
   def producers
     @pthreads.times do
-      puts "setting producer"
       t = Thread.new do
         val = SecureRandom.uuid
         Thread.current.thread_variable_set(:id, val)
-        puts "created producer: #{val}"
         loop do
           @queue.synchronize do
             @full_cond.wait_while { @queue.max == @queue.length }
             val = SecureRandom.hex
             @queue.push(val)
-            puts "#{id} producing #{val}, queue length: #{@queue.length}"
+            # puts "#{id} producing #{val}, queue length: #{@queue.length}"
             @empty_cond.signal
           end
         end
+        true
       end
       @threads << t
-      puts "finished setting producer"
     end
   end
 
   def consumers
     @cthreads.times do
-      puts "setting consumer"
-      consumer = Consumer.new
       t = Thread.new do
-        loop do
-          consumer.consume(@queue) do |i|
-            @empty_cond.wait_while { @queue.empty? }
-            val = @queue.pop
-            puts "Consumed #{val}, queue length #{@queue.length}"
-            @full_cond.signal
-          end
+        consumer = Consumer.new
+        consumer.consume(@queue) do |i|
+          @empty_cond.wait_while { @queue.empty? }
+          val = @queue.pop
+          @full_cond.signal
+          val
         end
       end
       @threads << t
-      puts "finished setting consumer"
     end
   end
 
-  def id
-    Thread.current.thread_variable_get(:id)
+  def kill_all
+    @threads.each(&:join)
   end
 end
 
 pc = ProducerConsumer.new(2, 2, 10)
+
 pc.run
+pc.kill_all

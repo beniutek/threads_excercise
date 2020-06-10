@@ -1,6 +1,8 @@
 class ProducerConsumer
+  attr_reader :consumers
+
   def initialize(pthreads = 3, cthreads = 3, queue_size = 5)
-    @pthreads, @cthreads = pthreads, cthreads
+    @pthreads_number, @cthreads_number = pthreads, cthreads
     @queue = SizedQueue.new(queue_size)
     @queue.extend(MonitorMixin)
     @empty_cond = @queue.new_cond
@@ -8,45 +10,46 @@ class ProducerConsumer
     @all_consumers_full = @queue.new_cond
     @all_producers_empty = @queue.new_cond
     @threads = []
+    @consumers = []
   end
 
   def run(time = nil)
     producers
     consumers
-    ThreadsWait.all_waits(@threads) do |thread|
-       puts "GOT RESULT:"
-       pp thread
-    end
+    ThreadsWait.all_waits(@threads)
   end
 
   def producers
-    @pthreads.times do
+    @pthreads = []
+    @pthreads_number.times do
       t = Thread.new do
-        producer = Producer.new(resources_size: 10)
+        producer = Producer.new(resources_size: 5)
         producer.produce(@queue) do |val|
           @full_cond.wait_while { @queue.max == @queue.length }
           @queue.push(val)
           @empty_cond.signal
         end
-        true
       end
       @threads << t
+      @pthreads << t
     end
   end
 
   def consumers
-    @cthreads.times do
+    @cthreads ||= []
+    @cthreads_number.times do
       t = Thread.new do
         consumer = Consumer.new
-        consumer.consume(@queue) do |i|
+        @consumers << consumer
+        consumer.consume(@queue) do
           @empty_cond.wait_while { @queue.empty? }
-          @all
           val = @queue.pop
+          consumer.consume_val(val)
           @full_cond.signal
-          val
         end
       end
       @threads << t
+      @cthreads << t
     end
   end
 

@@ -19,6 +19,7 @@ class Producer
           yield(produce_val)
         end
       end
+      self
     end
   end
 

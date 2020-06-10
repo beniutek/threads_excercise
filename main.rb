@@ -6,9 +6,15 @@ require './producer.rb'
 require './consumer.rb'
 require './producer_consumer.rb'
 
+# pobieramy argumenty wejściowe
+i , j, k = ARGV
 
-pthreads, cthreads, queue_size = ARGV
-pc = ProducerConsumer.new(pthreads.to_i || 2, cthreads.to_i || 2, queue_size.to_i || 5)
+# upewniamy się, że każdy argument będzie miał wartość > 0
+pthreads = i.to_i > 0 ? i.to_i : 2
+cthreads = j.to_i > 0 ? j.to_i : 2
+queue_size = k.to_i > 0 ? k.to_i : 10
+
+pc = ProducerConsumer.new(pthreads, cthreads, queue_size)
 
 pc.run
 pc.kill_all

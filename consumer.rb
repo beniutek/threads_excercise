@@ -1,6 +1,9 @@
 class Consumer
   attr_reader :id, :condition, :own_buffer, :max_size
 
+  # argumenty wejściowe
+  # id -> identyfikator dla obiektu, domyślnie typ uuid
+  # max_size -> maksymalna liczba pobranych danych
   def initialize(id = nil, max_size = 5)
     @id = id || SecureRandom.uuid
     @max_size = max_size
@@ -8,6 +11,9 @@ class Consumer
 
   end
 
+  # metoda będzie w nieskończoność konsumowała dane z queue
+  # jeśli @max_size != nil i @own_buffer jest zapełniony to zamiast tego
+  # wątek będzie zakańczany
   def consume(queue, &block)
     loop do
       if full?
@@ -24,6 +30,7 @@ class Consumer
   end
 
   def full?
+    return false if @max_size.nil?
     own_buffer.size >= max_size
   end
 
